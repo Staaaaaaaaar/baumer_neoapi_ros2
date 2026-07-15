@@ -1,0 +1,11 @@
+build/
+install/
+log/
+*.bmp
+*.png
+*.jpg
+*.jpeg
+*.bag
+*.db3
+__pycache__/
+.pytest_cache/
