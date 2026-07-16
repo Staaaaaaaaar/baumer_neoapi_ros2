@@ -118,7 +118,7 @@ private:
   {
     const std::string camera_label = camera_id_.empty() ? "" : " with id '" + camera_id_ + "'";
     RCLCPP_INFO(get_logger(), "Connecting Baumer camera%s", camera_label.c_str());
-    camera_.Connect(camera_id_.c_str());
+    camera_.Connect(camera_id_.c_str()); // 如果确定是GigE的话，可以直接camera_.Connect("GigE")
     RCLCPP_INFO(get_logger(), "Connected. neoAPI library version: %s", NeoAPI::Cam::GetLibraryVersion().c_str());
   }
 
@@ -316,7 +316,7 @@ private:
 
     const std::string actual_format = image.GetPixelFormat().c_str();
     const auto encoding = encoding_from_pixel_format(actual_format);
-    const auto width = static_cast<uint32_t>(image.GetWidth());
+    const auto width = static_cast<uint32_t>(image.GetWidth()); // 是否安全
     const auto height = static_cast<uint32_t>(image.GetHeight());
     const auto image_size = static_cast<size_t>(image.GetSize());
     const void * image_data = image.GetImageData();
@@ -331,8 +331,8 @@ private:
     msg->height = height;
     msg->width = width;
     msg->encoding = encoding.encoding;
-    msg->is_bigendian = encoding.bigendian ? 1 : 0;
-    msg->step = image_size % height == 0
+    msg->is_bigendian = encoding.bigendian ? 1 : 0; // 是否为大端法
+    msg->step = image_size % height == 0  // 有填充，一行的步长。似乎第二种情况难以触发。
       ? static_cast<sensor_msgs::msg::Image::_step_type>(image_size / height)
       : static_cast<sensor_msgs::msg::Image::_step_type>(width * encoding.bytes_per_pixel);
     msg->data.resize(image_size);

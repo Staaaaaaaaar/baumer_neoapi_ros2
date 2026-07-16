@@ -42,8 +42,45 @@ sudo apt install -y \
 Optional but recommended on WSL if ROS graph discovery is unstable:
 
 ```bash
-sudo apt install -y ros-humble-rmw-cyclonedds-cpp
+sudo apt install ros-humble-rmw-zenoh-cpp
 ```
+
+## Quick Start
+
+```bash
+colcon build --packages-select baumer_neoapi_ros2
+```
+
+There will be 2 or 3 terminals, they have some common instructions and some specific one:
+
+common:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+```
+
+
+specific:
+
+①zenoh:
+```bash
+ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+②camera:
+```bash
+export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
+ros2 run baumer_neoapi_ros2 baumer_camera_node --ros-args   -p publish_rate:=30.0   -p grab_rate:=30.0   -p camera_frame_rate:=30.0   -p pixel_format:=Mono8   -p qos_depth:=1   -p qos_reliability:=reliable
+```
+
+③image_reading(optional):
+```bash
+export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
+ros2 run image_tools showimage --ros-args   -r image:=/image_raw   -p reliability:=reliable
+```
+
 
 ## Build
 
@@ -68,101 +105,6 @@ colcon build --packages-select baumer_neoapi_ros2 \
   --cmake-args -DNEOAPI_ROOT_DIR=/path/to/Baumer_neoAPI_..._cpp
 ```
 
-## Quick Start Checklist
-
-Use this sequence when bringing up the camera on a new machine.
-
-From the repository root:
-
-```bash
-source /opt/ros/humble/setup.bash
-export ROS_LOCALHOST_ONLY=1
-```
-
-If CycloneDDS is installed and you want to use it:
-
-```bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-```
-
-Build the ROS package:
-
-```bash
-colcon build --packages-select baumer_neoapi_ros2
-source install/setup.bash
-```
-
-Check that the Baumer GigE camera is visible at the network/SDK-tool level:
-
-```bash
-sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig -v
-```
-
-If no camera appears, check the host Ethernet interface:
-
-```bash
-ip -br link
-ip -br addr
-```
-
-If the camera is reachable but not in the same subnet as the host NIC, you can temporarily force a compatible IP:
-
-```bash
-sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig -a
-```
-
-Start the ROS camera node:
-
-```bash
-ros2 run baumer_neoapi_ros2 baumer_camera_node --ros-args \
-  -p camera_id:='"<CAMERA_SERIAL>"' \
-  -p publish_rate:=5.0 \
-  -p grab_rate:=5.0 \
-  -p camera_frame_rate:=5.0 \
-  -p pixel_format:=Mono8 \
-  -p qos_depth:=1 \
-  -p qos_reliability:=reliable
-```
-
-If only one Baumer camera is connected, `camera_id` can be omitted.
-
-Expected successful node logs:
-
-```text
-Connected. neoAPI library version: 1.5.0
-Set ExposureTime to 10000.000 us
-Set AcquisitionFrameRate to 5.000 Hz
-First image received: ...
-First image published on 'image_raw'
-```
-
-In another terminal, use the same ROS environment:
-
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-export ROS_LOCALHOST_ONLY=1
-```
-
-If the node terminal uses CycloneDDS, this terminal must use it too:
-
-```bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-```
-
-Check image publication:
-
-```bash
-ros2 topic hz /image_raw
-```
-
-View the image:
-
-```bash
-ros2 run image_tools showimage --ros-args \
-  -r image:=/image_raw \
-  -p reliability:=reliable
-```
 
 ## GigE Camera Network Setup
 
@@ -211,16 +153,15 @@ Unplug and reconnect the camera after changing udev rules.
 
 ## Run
 
-For WSL or single-machine testing, use:
-
-```bash
-export ROS_LOCALHOST_ONLY=1
-```
-
 If CycloneDDS is installed and desired:
 
 ```bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+```
+
+Start the zenho node:
+```bash
+ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
 Start the camera node:
@@ -234,6 +175,11 @@ ros2 run baumer_neoapi_ros2 baumer_camera_node --ros-args \
   -p pixel_format:=Mono8 \
   -p qos_depth:=1 \
   -p qos_reliability:=reliable
+```
+
+In the camera node terminal:
+```bash
+export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
 ```
 
 If only one Baumer camera is connected, `camera_id` can be omitted.
