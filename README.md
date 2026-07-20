@@ -2,7 +2,7 @@
 
 This repository contains a ROS 2 Humble C++ node that publishes images from a Baumer camera through Baumer neoAPI.
 
-The repository is self-contained for x86_64 Linux development because it includes the required Baumer neoAPI C++ SDK files under `third_party/`.
+The repository is self-contained for Linux development because it includes Baumer neoAPI C++ SDK files under `third_party/`.
 
 ## Repository Layout
 
@@ -10,7 +10,9 @@ The repository is self-contained for x86_64 Linux development because it include
 .
 ├── baumer_neoapi_ros2/                       # ROS 2 package
 ├── third_party/
-│   └── Baumer_neoAPI_1.5.0_lin_x86_64_cpp/   # Baumer neoAPI headers, libraries, tools, drivers, license
+│   ├── Baumer_neoAPI_1.5.0_lin_x86_64_cpp/   # x86_64 SDK
+│   ├── Baumer_neoAPI_1.5.0_lin_aarch64_cpp/  # ARM64 SDK
+│   └── Baumer_neoAPI_1.5.0_lin_armhf_cpp/    # 32-bit ARM hard-float SDK
 └── tools/
     └── save_image_once.py                    # Optional image subscriber/saver helper
 ```
@@ -19,11 +21,45 @@ The repository is self-contained for x86_64 Linux development because it include
 
 - Ubuntu 22.04
 - ROS 2 Humble
-- x86_64 Linux
+- x86_64, aarch64, or armhf Linux
 - Baumer GigE or USB camera
 - For GigE cameras: a configured Ethernet interface in the same subnet as the camera
 
-For ARM64 boards, use Baumer's `lin_aarch64_cpp` SDK package instead of the bundled x86_64 SDK and update the SDK folder path/name accordingly.
+Supported SDK folder names:
+
+```text
+third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp
+third_party/Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+third_party/Baumer_neoAPI_1.5.0_lin_armhf_cpp
+```
+
+The CMake file selects the SDK folder automatically from `CMAKE_SYSTEM_PROCESSOR`:
+
+```text
+x86_64 / amd64       -> Baumer_neoAPI_1.5.0_lin_x86_64_cpp
+aarch64 / arm64      -> Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+armhf / armv7l       -> Baumer_neoAPI_1.5.0_lin_armhf_cpp
+```
+
+For shell commands that call Baumer tools directly, set this helper variable from the repository root:
+
+```bash
+case "$(uname -m)" in
+  x86_64|amd64)
+    export BAUMER_NEOAPI_SDK=third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp
+    ;;
+  aarch64|arm64)
+    export BAUMER_NEOAPI_SDK=third_party/Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+    ;;
+  armhf|armv7l|armv7*)
+    export BAUMER_NEOAPI_SDK=third_party/Baumer_neoAPI_1.5.0_lin_armhf_cpp
+    ;;
+  *)
+    echo "Unsupported architecture: $(uname -m)"
+    return 1 2>/dev/null || exit 1
+    ;;
+esac
+```
 
 ## Install Dependencies
 
@@ -50,10 +86,15 @@ sudo apt install ros-humble-rmw-zenoh-cpp
 ```bash
 colcon build --packages-select baumer_neoapi_ros2
 ```
+note: If it is cross-compilation, automatic recognition may identify the architecture of the build machine instead of the target board; in that case, manual specification is required:
+```bash
+colcon build --symlink-install \
+  --cmake-args -DNEOAPI_SDK_DIR_NAME=Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+```
 
 There will be 2 or 3 terminals, they have some common instructions and some specific one:
 
-common:
+Common setup for every terminal:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -69,16 +110,24 @@ specific:
 ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-②camera:
+② camera:
 ```bash
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 run baumer_neoapi_ros2 baumer_camera_node --ros-args   -p publish_rate:=30.0   -p grab_rate:=30.0   -p camera_frame_rate:=30.0   -p pixel_format:=Mono8   -p qos_depth:=1   -p qos_reliability:=reliable
+ros2 run baumer_neoapi_ros2 baumer_camera_node --ros-args \
+  -p publish_rate:=30.0 \
+  -p grab_rate:=30.0 \
+  -p camera_frame_rate:=30.0 \
+  -p pixel_format:=Mono8 \
+  -p qos_depth:=1 \
+  -p qos_reliability:=reliable
 ```
 
-③image_reading(optional):
+③ image_reading(optional):
 ```bash
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 run image_tools showimage --ros-args   -r image:=/image_raw   -p reliability:=reliable
+ros2 run image_tools showimage --ros-args \
+  -r image:=/image_raw \
+  -p reliability:=reliable
 ```
 
 
@@ -92,10 +141,21 @@ colcon build --packages-select baumer_neoapi_ros2
 source install/setup.bash
 ```
 
-The package CMake file automatically uses:
+The package CMake file automatically searches these SDK layouts:
 
 ```text
 third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp
+../third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp
+third_party/Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+../third_party/Baumer_neoAPI_1.5.0_lin_aarch64_cpp
+third_party/Baumer_neoAPI_1.5.0_lin_armhf_cpp
+../third_party/Baumer_neoAPI_1.5.0_lin_armhf_cpp
+```
+
+The architecture-specific SDK is selected automatically. If you switch machines or SDK architecture, remove old CMake caches before rebuilding:
+
+```bash
+rm -rf build install log
 ```
 
 You can override the SDK path if needed:
@@ -103,6 +163,13 @@ You can override the SDK path if needed:
 ```bash
 colcon build --packages-select baumer_neoapi_ros2 \
   --cmake-args -DNEOAPI_ROOT_DIR=/path/to/Baumer_neoAPI_..._cpp
+```
+
+You can also override only the SDK folder name:
+
+```bash
+colcon build --packages-select baumer_neoapi_ros2 \
+  --cmake-args -DNEOAPI_SDK_DIR_NAME=Baumer_neoAPI_1.5.0_lin_aarch64_cpp
 ```
 
 
@@ -120,19 +187,19 @@ Camera:    192.168.1.11/24
 List detected GigE cameras:
 
 ```bash
-sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig -v
+sudo "$BAUMER_NEOAPI_SDK/tools/gevipconfig" -v
 ```
 
 Temporarily force cameras into a compatible subnet:
 
 ```bash
-sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig -a
+sudo "$BAUMER_NEOAPI_SDK/tools/gevipconfig" -a
 ```
 
 Set a persistent IP for a specific camera:
 
 ```bash
-sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig \
+sudo "$BAUMER_NEOAPI_SDK/tools/gevipconfig" \
   -c <CAMERA_SERIAL_OR_MAC> \
   -i 192.168.1.11 \
   -s 255.255.255.0 \
@@ -144,7 +211,7 @@ sudo third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/tools/gevipconfig \
 For USB cameras, install Baumer's udev rule once:
 
 ```bash
-sudo cp third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/drivers/udev_rules/99-baumer-cameras.rules /etc/udev/rules.d/
+sudo cp "$BAUMER_NEOAPI_SDK/drivers/udev_rules/99-baumer-cameras.rules" /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
@@ -153,13 +220,13 @@ Unplug and reconnect the camera after changing udev rules.
 
 ## Run
 
-If CycloneDDS is installed and desired:
+If Zenoh RMW is used by the robot platform:
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ```
 
-Start the zenho node:
+Start the Zenoh router:
 ```bash
 ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
@@ -232,6 +299,8 @@ The bundled Baumer SDK files remain governed by Baumer's license in:
 
 ```text
 third_party/Baumer_neoAPI_1.5.0_lin_x86_64_cpp/LICENSE
+third_party/Baumer_neoAPI_1.5.0_lin_aarch64_cpp/LICENSE
+third_party/Baumer_neoAPI_1.5.0_lin_armhf_cpp/LICENSE
 ```
 
 Review that license before publishing this repository publicly.
@@ -246,3 +315,18 @@ export ROS_LOCALHOST_ONLY=1
 ```
 
 Make sure every ROS terminal uses the same `ROS_LOCALHOST_ONLY`, `ROS_DOMAIN_ID`, and `RMW_IMPLEMENTATION` values.
+
+## Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `camera_id` | `""` | Camera search string. Use a serial number such as `"700013387421"` for stable selection. |
+| `image_topic` | `image_raw` | Published image topic. |
+| `frame_id` | `baumer_camera` | ROS frame id in the image header. |
+| `pixel_format` | `BGR8` | neoAPI conversion target. Common values: `Mono8`, `BGR8`, `RGB8`, `Mono16`. |
+| `publish_rate` | `10.0` | ROS topic publishing rate in Hz. |
+| `grab_rate` | `publish_rate` | Software image grabbing rate in Hz. Use `0.0` for unlimited. |
+| `camera_frame_rate` | `0.0` | Requested camera acquisition frame rate in Hz. Use `0.0` to leave the camera unchanged. |
+| `exposure_time_us` | `10000.0` | Exposure time in microseconds. Use `0.0` to leave it unchanged. |
+| `qos_depth` | `5` | ROS publisher queue depth. |
+| `qos_reliability` | `best_effort` | `best_effort` or `reliable`. Use `reliable` when debugging with older `ros2 topic hz` tools. |
